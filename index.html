@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spent List Dashboard</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+
+    <style>
+      :root {
+        --primary: #4a90e2;
+        --primary-hover: #357abd;
+        --success: #28a745;
+        --danger: #dc3545;
+        --background: #f4f6f9;
+        --card-bg: #ffffff;
+        --text: #333333;
+        --border: #e0e0e0;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background-color: var(--background);
+        color: var(--text);
+        margin: 0;
+        padding: 40px 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 100vh;
+        box-sizing: border-box;
+      }
+
+      /* 🔒 Master Gateway Login Screen Panel Overlay */
+      #loginScreen {
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background-color: var(--background);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        transition: opacity 0.25s ease, visibility 0.25s ease;
+      }
+
+      .login-card {
+        background: var(--card-bg);
+        padding: 40px 30px;
+        border-radius: 12px;
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.1);
+        width: 100%;
+        max-width: 380px;
+        text-align: center;
+        box-sizing: border-box;
+      }
+
+      /* Main Dashboard Content Wrapper (Hidden by default until validated) */
+      .dashboard-wrapper {
+        width: 100%;
+        max-width: 1000px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        display: none; /* Controlled dynamically via JS */
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+
+      .dashboard-wrapper.authorized {
+        display: flex;
+        opacity: 1;
+      }
+
+      /* Top Action Bar Placement */
+      .action-bar {
+        display: flex;
+        justify-content: flex-start;
+        align-items: center;
+      }
+
+      .add-entry-btn {
+        background-color: var(--primary);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        font-size: 15px;
+        font-weight: 600;
+        border-radius: 6px;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(74, 144, 226, 0.2);
+        transition:
+          background-color 0.15s,
+          transform 0.1s;
+      }
+
+      .add-entry-btn:hover {
+        background-color: var(--primary-hover);
+      }
+
+      .add-entry-btn:active {
+        transform: scale(0.98);
+      }
+
+      /* Main Ledger Dashboard Table Window */
+      .table-container {
+        background-color: var(--card-bg);
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 8px 24 rgba(0, 0, 0, 0.04);
+        box-sizing: border-box;
+      }
+
+      h2 {
+        margin-top: 0;
+        margin-bottom: 20px;
+        font-size: 22px;
+        color: #222;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        font-size: 14px;
+      }
+
+      th {
+        background-color: #f8f9fa;
+        color: #555;
+        font-weight: 600;
+        padding: 14px 12px;
+        border-bottom: 2px solid var(--border);
+      }
+
+      td {
+        padding: 14px 12px;
+        border-bottom: 1px solid var(--border);
+        color: #444;
+      }
+
+      tr {
+        transition: background-color 0.15s ease;
+      }
+
+      tr:hover {
+        background-color: #4a91e250 !important;
+        cursor: pointer;
+      }
+
+      .credit-text {
+        color: var(--success);
+        font-weight: 600;
+      }
+      .debit-text {
+        color: var(--danger);
+        font-weight: 600;
+      }
+      .balance-text {
+        color: #333;
+        font-weight: 600;
+      }
+
+      /* Modal Overlay Pop-Up Box Styles */
+      .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        opacity: 0;
+        visibility: hidden;
+        transition:
+          opacity 0.2s ease,
+          visibility 0.2s ease;
+        z-index: 1000;
+      }
+
+      .modal-overlay.active {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      .modal-card {
+        background-color: var(--card-bg);
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.15);
+        width: 100%;
+        max-width: 420px;
+        box-sizing: border-box;
+        position: relative;
+        transform: translateY(-20px);
+        transition: transform 0.2s ease;
+      }
+
+      .modal-overlay.active .modal-card {
+        transform: translateY(0);
+      }
+
+      .close-modal {
+        position: absolute;
+        top: 15px;
+        right: 20px;
+        font-size: 24px;
+        font-weight: bold;
+        color: #aaa;
+        cursor: pointer;
+        border: none;
+        background: none;
+      }
+
+      .close-modal:hover {
+        color: #333;
+      }
+
+      .status-box {
+        background-color: #e9ecef;
+        border-left: 4px solid var(--primary);
+        padding: 10px;
+        border-radius: 4px;
+        font-size: 13px;
+        margin-bottom: 20px;
+        font-weight: 500;
+      }
+
+      .form-group {
+        margin-bottom: 16px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 600;
+        font-size: 14px;
+        color: #555;
+      }
+
+      input,
+      select {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        font-size: 15px;
+        box-sizing: border-box;
+      }
+
+      input:focus,
+      select:focus {
+        outline: none;
+        border-color: var(--primary);
+      }
+
+      .error-msg {
+        color: var(--danger);
+        font-size: 13px;
+        margin-top: 6px;
+        display: none;
+        font-weight: 500;
+      }
+
+      .submit-btn {
+        width: 100%;
+        padding: 12px;
+        background-color: var(--success);
+        border: none;
+        color: white;
+        font-size: 16px;
+        font-weight: bold;
+        border-radius: 6px;
+        cursor: pointer;
+        margin-top: 10px;
+      }
+
+      .submit-btn:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+
+    <div id="loginScreen">
+      <div class="login-card">
+        <h2 style="margin-bottom: 10px;">Security Access</h2>
+        <p style="color: #666; font-size: 14px; margin-bottom: 25px;">Enter your master password to unlock and load the financial dashboard matrix.</p>
+        <form id="loginForm">
+          <div class="form-group" style="text-align: left;">
+            <label for="masterPassword">Master Password</label>
+            <input type="password" id="masterPassword" placeholder="••••••••" required />
+          </div>
+          <button type="submit" class="submit-btn" style="background-color: var(--primary);">Unlock System</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="dashboard-wrapper" id="dashboardContent">
+      <div class="action-bar">
+        <button class="add-entry-btn" id="openModalBtn">＋ Add Entry</button>
+      </div>
+
+      <div class="table-container">
+        <h2>Transaction Ledger Dashboard</h2>
+        <div style="overflow-x: auto">
+          <table id="ledgerTable">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Details</th>
+                <th>Credit (+)</th>
+                <th>Debit (-)</th>
+                <th>Balance</th>
+              </tr>
+            </thead>
+            <tbody id="ledgerBody">
+              <tr>
+                <td
+                  colspan="5"
+                  style="text-align: center; color: #888; padding: 25px"
+                >
+                  Fetching ledger documentation matrix...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal-card">
+        <button class="close-modal" id="closeModalBtn">&times;</button>
+        <h2>Log Transaction</h2>
+        <div id="statusBox" class="status-box">
+          Syncing validation boundaries...
+        </div>
+
+        <form id="transactionForm">
+          <div class="form-group">
+            <label for="type">Transaction Type</label>
+            <select id="type" required>
+              <option value="Spend">Spend Money (Debit -)</option>
+              <option value="Receive">Receive Money (Credit +)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="date">Transaction Date</label>
+            <input type="date" id="date" required disabled />
+            <div id="dateError" class="error-msg">
+              ❌ Date cannot be older than the last entry row!
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="title">Details / Title</label>
+            <input
+              type="text"
+              id="title"
+              list="titlePrefixes"
+              placeholder="Select a option or type details..."
+              required
+            />
+            <datalist id="titlePrefixes">
+              <option value="LUNCH"></option>
+              <option value="DINNER"></option>
+              <option value="MANGO JUICE"></option>
+              <option value="CHAI & NASTO"></option>
+              <option value="PANI PURI"></option>
+              <option value="RECEIVE FROM FATHER"></option>
+              <option value="PAY RENT"></option>
+              <option value="AUTO"></option>
+              <option value="GAME ZONE"></option>
+            </datalist>
+          </div>
+
+          <div class="form-group">
+            <label for="amount">Amount (₹)</label>
+            <input
+              type="number"
+              id="amount"
+              step="0.01"
+              min="0.01"
+              placeholder="0.00"
+              required
+            />
+          </div>
+
+          <button type="submit" class="submit-btn" id="submitBtn" disabled>
+            Save Transaction
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      const SCRIPT_URL =
+        "https://script.google.com/macros/s/AKfycbxh4MKET1DQa9y8fBu01zHTM414RXvIkvn1ifnlVPmEr8GLMCXsPQ1EHMf9hfei8p-v4Q/exec";
+      
+      // Saved session token generated during system access unlock
+      let sessionAuthHash = "";
+      let lastEntryDate = null;
+
+      // DOM UI Element Selectors
+      const loginScreen = document.getElementById("loginScreen");
+      const dashboardContent = document.getElementById("dashboardContent");
+      const modalOverlay = document.getElementById("modalOverlay");
+      const openModalBtn = document.getElementById("openModalBtn");
+      const closeModalBtn = document.getElementById("closeModalBtn");
+
+      // --- Modal Open/Close Controls ---
+      openModalBtn.addEventListener("click", () => modalOverlay.classList.add("active"));
+      closeModalBtn.addEventListener("click", () => modalOverlay.classList.remove("active"));
+      modalOverlay.addEventListener("click", (e) => {
+        if (e.target === modalOverlay) modalOverlay.classList.remove("active");
+      });
+
+      // --- 1. HANDLE MASTER PORTAL ACCESS LOCK SUBMISSION ---
+      document.getElementById("loginForm").addEventListener("submit", function (e) {
+        e.preventDefault();
+        const inputPassword = document.getElementById("masterPassword").value;
+        
+        // Immediately generate a secure SHA-256 string out of input text
+        sessionAuthHash = CryptoJS.SHA256(inputPassword).toString();
+        
+        // Fire system load initialization routine using current cipher key signature
+        initPortal();
+      });
+
+      // --- 2. RUN PORTAL INITIALIZATION ROUTINE ---
+      async function initPortal() {
+        const statusBox = document.getElementById("statusBox");
+        const dateInput = document.getElementById("date");
+        const submitBtn = document.getElementById("submitBtn");
+
+        try {
+          // Send signature to backend via secure API query string parameters validation checkpoint
+          const response = await fetch(`${SCRIPT_URL}?authHash=${sessionAuthHash}`);
+          const data = await response.json();
+
+          // Handle login reject anomalies gracefully
+          if (data.status === "error") {
+            alert("❌ Security Verification Refused: Incorrect Access Key.");
+            sessionAuthHash = ""; // Clear out broken memory signature string
+            document.getElementById("masterPassword").value = ""; // Reset box
+            return;
+          }
+
+          // If valid: Hide login cover sheet element dynamically
+          loginScreen.style.opacity = "0";
+          setTimeout(() => loginScreen.style.display = "none", 250);
+          
+          // Reveal main data wrapper elements
+          dashboardContent.classList.add("authorized");
+
+          // Build out rows inside dashboard ledger table component
+          if (data.history && data.history.length > 0) {
+            renderTable(data.history);
+          } else {
+            document.getElementById("ledgerBody").innerHTML =
+              `<tr><td colspan="5" style="text-align: center; color: #888; padding: 20px;">No transactions logged yet.</td></tr>`;
+          }
+
+          // Apply timeline locking mechanisms onto calendar form field input bounding targets
+          if (data.lastDate) {
+            lastEntryDate = new Date(data.lastDate);
+
+            if (lastEntryDate && !isNaN(lastEntryDate.getTime())) {
+              lastEntryDate.setHours(0, 0, 0, 0);
+              statusBox.innerText = `Last locked entry date: ${data.lastDate}`;
+
+              const year = lastEntryDate.getFullYear();
+              const month = String(lastEntryDate.getMonth() + 1).padStart(2, "0");
+              const day = String(lastEntryDate.getDate()).padStart(2, "0");
+              dateInput.min = `${year}-${month}-${day}`;
+            }
+          } else {
+            statusBox.innerText = "Ready for initial row baseline registration.";
+          }
+
+          dateInput.disabled = false;
+          submitBtn.disabled = false;
+        } catch (err) {
+          alert("❌ Network Error: Unable to complete authentication loop handshake routing.");
+          console.error(err);
+        }
+      }
+
+      // Process transaction data mapping cleanly onto DOM elements
+      function renderTable(history) {
+        const tbody = document.getElementById("ledgerBody");
+        tbody.innerHTML = "";
+
+        history.forEach((row) => {
+          const tr = document.createElement("tr");
+
+          function cleanAndParse(value) {
+            if (!value || value === "—" || value.toString().trim() === "") return null;
+            const cleanNum = parseFloat(value.toString().replace(/[^\d.-]/g, ""));
+            return isNaN(cleanNum) ? null : cleanNum;
+          }
+
+          const creditNum = cleanAndParse(row.credit);
+          const debitNum = cleanAndParse(row.debit);
+          const balanceNum = cleanAndParse(row.balance);
+
+          const creditDisplay = creditNum !== null ? `<span class="credit-text">₹${creditNum.toFixed(2)}</span>` : "—";
+          const debitDisplay = debitNum !== null ? `<span class="debit-text">₹${Math.abs(debitNum).toFixed(2)}</span>` : "—";
+          const balanceDisplay = balanceNum !== null ? `<span class="balance-text">₹${balanceNum.toFixed(2)}</span>` : "—";
+
+          tr.innerHTML = `
+                <td><b>${row.date}</b></td>
+                <td>${row.details}</td>
+                <td>${creditDisplay}</td>
+                <td>${debitDisplay}</td>
+                <td>${balanceDisplay}</td>
+            `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      // Check transaction dates against database logs timeline in real-time
+      document.getElementById("date").addEventListener("change", function () {
+        if (!lastEntryDate) return;
+
+        const chosenDate = new Date(this.value);
+        chosenDate.setHours(0, 0, 0, 0);
+
+        const errorMsg = document.getElementById("dateError");
+        const submitBtn = document.getElementById("submitBtn");
+
+        if (chosenDate < lastEntryDate) {
+          errorMsg.style.display = "block";
+          submitBtn.disabled = true;
+        } else {
+          errorMsg.style.display = "none";
+          submitBtn.disabled = false;
+        }
+      });
+
+      // --- 3. SUBMIT TRANSACTION PAYLOAD WITH RE-PASSED TOKEN KEY ---
+      document.getElementById("transactionForm").addEventListener("submit", async function (e) {
+          e.preventDefault();
+
+          const submitBtn = document.getElementById("submitBtn");
+          submitBtn.disabled = true;
+          submitBtn.innerText = "Pushing data...";
+
+          const payload = {
+            date: document.getElementById("date").value,
+            type: document.getElementById("type").value,
+            title: document.getElementById("title").value,
+            amount: parseFloat(document.getElementById("amount").value),
+            authHash: sessionAuthHash // 👈 Reuses the token saved during system startup authorization!
+          };
+
+          try {
+            const response = await fetch(SCRIPT_URL, {
+              method: "POST",
+              body: JSON.stringify(payload),
+            });
+            const result = await response.json();
+
+            if (result.status === "success") {
+              alert("🎉 Row appended and statement calculation refreshed!");
+              location.reload();
+            } else {
+              alert("Refused: " + result.message);
+              submitBtn.innerText = "Save Transaction";
+              submitBtn.disabled = false;
+            }
+          } catch (err) {
+            alert("Network communications transmission error.");
+            submitBtn.innerText = "Save Transaction";
+            submitBtn.disabled = false;
+          }
+        });
+    </script>
+  </body>
+</html>
