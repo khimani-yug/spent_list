@@ -294,7 +294,7 @@
             <label for="masterPassword">Master Password</label>
             <input type="password" id="masterPassword" placeholder="••••••••" required />
           </div>
-          <button type="submit" class="submit-btn" style="background-color: var(--primary);">Unlock System</button>
+          <button type="submit" id="unlockBtn" class="submit-btn" style="background-color: var(--primary);">Unlock System</button>
         </form>
       </div>
     </div>
@@ -421,15 +421,30 @@
       });
 
       // --- 1. HANDLE MASTER PORTAL ACCESS LOCK SUBMISSION ---
-      document.getElementById("loginForm").addEventListener("submit", function (e) {
+      document.getElementById("loginForm").addEventListener("submit", async function (e) {
         e.preventDefault();
         const inputPassword = document.getElementById("masterPassword").value;
-        
+        const unlockBtn = document.getElementById("unlockBtn");
+        const passwordInput = document.getElementById("masterPassword");
+
+        // Disable inputs and show loading state
+        unlockBtn.disabled = true;
+        unlockBtn.innerText = "Unlocking...";
+        passwordInput.disabled = true;
+
         // Immediately generate a secure SHA-256 string out of input text
         sessionAuthHash = CryptoJS.SHA256(inputPassword).toString();
-        
+
         // Fire system load initialization routine using current cipher key signature
-        initPortal();
+        const success = await initPortal();
+
+        // If validation failed, re-enable form controls
+        if (!success) {
+          unlockBtn.disabled = false;
+          unlockBtn.innerText = "Unlock System";
+          passwordInput.disabled = false;
+          passwordInput.focus();
+        }
       });
 
       // --- 2. RUN PORTAL INITIALIZATION ROUTINE ---
@@ -448,7 +463,7 @@
             alert("❌ Security Verification Refused: Incorrect Access Key.");
             sessionAuthHash = ""; // Clear out broken memory signature string
             document.getElementById("masterPassword").value = ""; // Reset box
-            return;
+            return false;
           }
 
           // If valid: Hide login cover sheet element dynamically
@@ -485,9 +500,12 @@
 
           dateInput.disabled = false;
           submitBtn.disabled = false;
+          return true;
         } catch (err) {
           alert("❌ Network Error: Unable to complete authentication loop handshake routing.");
           console.error(err);
+          document.getElementById("masterPassword").value = ""; // Reset box
+          return false;
         }
       }
 
