@@ -204,166 +204,202 @@ document.getElementById("transactionForm").addEventListener("submit", async func
 });
 
 // --- 4. EXPORT TRANSACTIONS TO PDF REPORT ---
-function exportToPDF() {
+async function exportToPDF() {
   if (!transactionHistory || transactionHistory.length === 0) {
     alert("No transaction data available to export.");
     return;
   }
 
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF("p", "pt", "a4");
+  const exportBtn = document.getElementById("exportPdfBtn");
+  const originalText = exportBtn.innerText;
+  exportBtn.disabled = true;
+  exportBtn.innerText = "⏳ Generating PDF...";
 
-  // Get dynamic page boundaries and grid dimensions
-  const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
-  const margin = 40;
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF("p", "pt", "a4");
 
-  // Compute stats metrics dynamically
-  let totalCredit = 0;
-  let totalDebit = 0;
-  let finalBalance = 0;
+    // Load custom fonts from cdnjs to support Unicode Rupee symbol (₹)
+    const fontRegularUrl = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.12/fonts/Roboto/Roboto-Regular.ttf";
+    const fontBoldUrl = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.12/fonts/Roboto/Roboto-Medium.ttf";
 
-  function cleanAndParse(value) {
-    if (!value || value === "—" || value.toString().trim() === "") return null;
-    const cleanNum = parseFloat(value.toString().replace(/[^\d.-]/g, ""));
-    return isNaN(cleanNum) ? null : cleanNum;
-  }
-
-  transactionHistory.forEach((row) => {
-    const cr = cleanAndParse(row.credit);
-    const db = cleanAndParse(row.debit);
-    if (cr !== null) totalCredit += cr;
-    if (db !== null) totalDebit += Math.abs(db);
-  });
-
-  if (transactionHistory.length > 0) {
-    const lastRow = transactionHistory[transactionHistory.length - 1];
-    const lastBal = cleanAndParse(lastRow.balance);
-    if (lastBal !== null) {
-      finalBalance = lastBal;
+    async function loadAndRegisterFont(url, name, style) {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`Failed to load font from ${url}`);
+      const buf = await resp.arrayBuffer();
+      const binaryString = new Uint8Array(buf).reduce((data, byte) => data + String.fromCharCode(byte), '');
+      const base64String = btoa(binaryString);
+      const vfsName = `${name}-${style}.ttf`;
+      doc.addFileToVFS(vfsName, base64String);
+      doc.addFont(vfsName, name, style);
     }
-  }
 
-  // --- DRAW PREMIUM HEADER ---
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(22);
-  doc.setTextColor(34, 34, 34); // #222
-  doc.text("Spent Report Ledger", margin, 50);
+    // Load both regular and bold fonts asynchronously
+    await loadAndRegisterFont(fontRegularUrl, "Roboto", "normal");
+    await loadAndRegisterFont(fontBoldUrl, "Roboto", "bold");
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.setTextColor(119, 119, 119); // #777
-  const timeString = new Date().toLocaleString();
-  doc.text(`Generated on: ${timeString}`, margin, 68);
+    // Set default font to Roboto
+    doc.setFont("Roboto", "normal");
 
-  doc.setDrawColor(224, 224, 224); // #e0e0e0
-  doc.setLineWidth(1);
-  doc.line(margin, 78, pageWidth - margin, 78);
+    // Get dynamic page boundaries and grid dimensions
+    const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
+    const margin = 40;
 
-  // --- SUMMARY METRICS CARD ---
-  const cardY = 90;
-  const cardHeight = 50;
-  const cardWidth = pageWidth - margin * 2;
+    // Compute stats metrics dynamically
+    let totalCredit = 0;
+    let totalDebit = 0;
+    let finalBalance = 0;
 
-  // Background Box
-  doc.setFillColor(248, 249, 250); // #f8f9fa
-  doc.roundedRect(margin, cardY, cardWidth, cardHeight, 6, 6, "F");
-
-  const colWidth = cardWidth / 3;
-
-  // Inflows (Credits)
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(102, 102, 102); // #666
-  doc.text("TOTAL CREDITS (+)", margin + 15, cardY + 18);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.setTextColor(40, 167, 69); // --success (#28a745)
-  doc.text(`INR ${totalCredit.toFixed(2)}`, margin + 15, cardY + 38);
-
-  // Outflows (Debits)
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(102, 102, 102);
-  doc.text("TOTAL DEBITS (-)", margin + colWidth + 15, cardY + 18);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.setTextColor(220, 53, 69); // --danger (#dc3545)
-  doc.text(`INR ${totalDebit.toFixed(2)}`, margin + colWidth + 15, cardY + 38);
-
-  // Net Position
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(102, 102, 102);
-  doc.text("NET BALANCE", margin + colWidth * 2 + 15, cardY + 18);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.setTextColor(34, 34, 34); // #222
-  doc.text(`INR ${finalBalance.toFixed(2)}`, margin + colWidth * 2 + 15, cardY + 38);
-
-  // --- TABULAR STATEMENT DATA ---
-  const tableHeaders = [["Date", "Details", "Credit (+)", "Debit (-)", "Balance"]];
-  const tableData = transactionHistory.map((row) => {
-    const cr = cleanAndParse(row.credit);
-    const db = cleanAndParse(row.debit);
-    const bal = cleanAndParse(row.balance);
-
-    return [
-      row.date,
-      row.details,
-      cr !== null ? `INR ${cr.toFixed(2)}` : "—",
-      db !== null ? `INR ${Math.abs(db).toFixed(2)}` : "—",
-      bal !== null ? `INR ${bal.toFixed(2)}` : "—"
-    ];
-  });
-
-  doc.autoTable({
-    head: tableHeaders,
-    body: tableData,
-    startY: cardY + cardHeight + 20,
-    margin: { left: margin, right: margin },
-    styles: {
-      font: "helvetica",
-      fontSize: 9,
-      cellPadding: 7,
-      valign: "middle"
-    },
-    headStyles: {
-      fillColor: [74, 144, 226], // Matches var(--primary) #4a90e2
-      textColor: 255,
-      fontStyle: "bold",
-    },
-    columnStyles: {
-      0: { cellWidth: 75, halign: "center" }, // Date
-      1: { cellWidth: "auto", halign: "left" }, // Details
-      2: { cellWidth: 85, halign: "right" }, // Credit
-      3: { cellWidth: 85, halign: "right" }, // Debit
-      4: { cellWidth: 95, halign: "right" }  // Balance
-    },
-    alternateRowStyles: {
-      fillColor: [248, 250, 252] // Sleek zebra shading
+    function cleanAndParse(value) {
+      if (!value || value === "—" || value.toString().trim() === "") return null;
+      const cleanNum = parseFloat(value.toString().replace(/[^\d.-]/g, ""));
+      return isNaN(cleanNum) ? null : cleanNum;
     }
-  });
 
-  // Add page numbers at the very end
-  const totalPages = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= totalPages; i++) {
-    doc.setPage(i);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(153, 153, 153);
-    doc.text(
-      `Page ${i} of ${totalPages}`,
-      pageWidth - margin - 50,
-      pageHeight - 20
-    );
-    doc.text(
-      "Confidential Financial Document",
-      margin,
-      pageHeight - 20
-    );
+    transactionHistory.forEach((row) => {
+      const cr = cleanAndParse(row.credit);
+      const db = cleanAndParse(row.debit);
+      if (cr !== null) totalCredit += cr;
+      if (db !== null) totalDebit += Math.abs(db);
+    });
+
+    if (transactionHistory.length > 0) {
+      const lastRow = transactionHistory[transactionHistory.length - 1];
+      const lastBal = cleanAndParse(lastRow.balance);
+      if (lastBal !== null) {
+        finalBalance = lastBal;
+      }
+    }
+
+    // --- DRAW PREMIUM HEADER ---
+    doc.setFont("Roboto", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(34, 34, 34); // #222
+    doc.text("Spent Report Ledger", margin, 50);
+
+    doc.setFont("Roboto", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(119, 119, 119); // #777
+    const timeString = new Date().toLocaleString();
+    doc.text(`Generated on: ${timeString}`, margin, 68);
+
+    doc.setDrawColor(224, 224, 224); // #e0e0e0
+    doc.setLineWidth(1);
+    doc.line(margin, 78, pageWidth - margin, 78);
+
+    // --- SUMMARY METRICS CARD ---
+    const cardY = 90;
+    const cardHeight = 50;
+    const cardWidth = pageWidth - margin * 2;
+
+    // Background Box
+    doc.setFillColor(248, 249, 250); // #f8f9fa
+    doc.roundedRect(margin, cardY, cardWidth, cardHeight, 6, 6, "F");
+
+    const colWidth = cardWidth / 3;
+
+    // Inflows (Credits)
+    doc.setFont("Roboto", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(102, 102, 102); // #666
+    doc.text("TOTAL CREDITS (+)", margin + 15, cardY + 18);
+    doc.setFont("Roboto", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(40, 167, 69); // --success (#28a745)
+    doc.text(`₹${totalCredit.toFixed(2)}`, margin + 15, cardY + 38);
+
+    // Outflows (Debits)
+    doc.setFont("Roboto", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(102, 102, 102);
+    doc.text("TOTAL DEBITS (-)", margin + colWidth + 15, cardY + 18);
+    doc.setFont("Roboto", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(220, 53, 69); // --danger (#dc3545)
+    doc.text(`₹${totalDebit.toFixed(2)}`, margin + colWidth + 15, cardY + 38);
+
+    // Net Position
+    doc.setFont("Roboto", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(102, 102, 102);
+    doc.text("NET BALANCE", margin + colWidth * 2 + 15, cardY + 18);
+    doc.setFont("Roboto", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(34, 34, 34); // #222
+    doc.text(`₹${finalBalance.toFixed(2)}`, margin + colWidth * 2 + 15, cardY + 38);
+
+    // --- TABULAR STATEMENT DATA ---
+    const tableHeaders = [["Date", "Details", "Credit (+)", "Debit (-)", "Balance"]];
+    const tableData = transactionHistory.map((row) => {
+      const cr = cleanAndParse(row.credit);
+      const db = cleanAndParse(row.debit);
+      const bal = cleanAndParse(row.balance);
+
+      return [
+        row.date,
+        row.details,
+        cr !== null ? `₹${cr.toFixed(2)}` : "—",
+        db !== null ? `₹${Math.abs(db).toFixed(2)}` : "—",
+        bal !== null ? `₹${bal.toFixed(2)}` : "—"
+      ];
+    });
+
+    doc.autoTable({
+      head: tableHeaders,
+      body: tableData,
+      startY: cardY + cardHeight + 20,
+      margin: { left: margin, right: margin },
+      styles: {
+        font: "Roboto",
+        fontSize: 9,
+        cellPadding: 7,
+        valign: "middle"
+      },
+      headStyles: {
+        fillColor: [74, 144, 226], // Matches var(--primary) #4a90e2
+        textColor: 255,
+        fontStyle: "bold",
+      },
+      columnStyles: {
+        0: { cellWidth: 75, halign: "center" }, // Date
+        1: { cellWidth: "auto", halign: "left" }, // Details
+        2: { cellWidth: 85, halign: "right" }, // Credit
+        3: { cellWidth: 85, halign: "right" }, // Debit
+        4: { cellWidth: 95, halign: "right" }  // Balance
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252] // Sleek zebra shading
+      }
+    });
+
+    // Add page numbers at the very end
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFont("Roboto", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(153, 153, 153);
+      doc.text(
+        `Page ${i} of ${totalPages}`,
+        pageWidth - margin - 50,
+        pageHeight - 20
+      );
+      doc.text(
+        "Confidential Financial Document",
+        margin,
+        pageHeight - 20
+      );
+    }
+
+    const fileNameDate = new Date().toISOString().split("T")[0];
+    doc.save(`spent-report-${fileNameDate}.pdf`);
+
+  } catch (err) {
+    console.error("PDF export failed:", err);
+    alert("❌ Error: Unable to fetch PDF font packages or generate file.");
+  } finally {
+    exportBtn.disabled = false;
+    exportBtn.innerText = originalText;
   }
-
-  const fileNameDate = new Date().toISOString().split("T")[0];
-  doc.save(`spent-report-${fileNameDate}.pdf`);
 }
