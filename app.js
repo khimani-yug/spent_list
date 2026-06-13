@@ -4,6 +4,7 @@ const SCRIPT_URL =
 // Saved session token generated during system access unlock
 let sessionAuthHash = "";
 let lastEntryDate = null;
+let transactionHistory = [];
 
 // DOM UI Element Selectors
 const loginScreen = document.getElementById("loginScreen");
@@ -11,6 +12,7 @@ const dashboardContent = document.getElementById("dashboardContent");
 const modalOverlay = document.getElementById("modalOverlay");
 const openModalBtn = document.getElementById("openModalBtn");
 const closeModalBtn = document.getElementById("closeModalBtn");
+const exportPdfBtn = document.getElementById("exportPdfBtn");
 
 // --- Modal Open/Close Controls ---
 openModalBtn.addEventListener("click", () => modalOverlay.classList.add("active"));
@@ -18,6 +20,7 @@ closeModalBtn.addEventListener("click", () => modalOverlay.classList.remove("act
 modalOverlay.addEventListener("click", (e) => {
   if (e.target === modalOverlay) modalOverlay.classList.remove("active");
 });
+exportPdfBtn.addEventListener("click", exportToPDF);
 
 // --- 1. HANDLE MASTER PORTAL ACCESS LOCK SUBMISSION ---
 document.getElementById("loginForm").addEventListener("submit", async function (e) {
@@ -74,8 +77,10 @@ async function initPortal() {
 
     // Build out rows inside dashboard ledger table component
     if (data.history && data.history.length > 0) {
+      transactionHistory = data.history;
       renderTable(data.history);
     } else {
+      transactionHistory = [];
       document.getElementById("ledgerBody").innerHTML =
         `<tr><td colspan="5" style="text-align: center; color: #888; padding: 20px;">No transactions logged yet.</td></tr>`;
     }
@@ -197,3 +202,168 @@ document.getElementById("transactionForm").addEventListener("submit", async func
     submitBtn.disabled = false;
   }
 });
+
+// --- 4. EXPORT TRANSACTIONS TO PDF REPORT ---
+function exportToPDF() {
+  if (!transactionHistory || transactionHistory.length === 0) {
+    alert("No transaction data available to export.");
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF("p", "pt", "a4");
+
+  // Get dynamic page boundaries and grid dimensions
+  const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
+  const margin = 40;
+
+  // Compute stats metrics dynamically
+  let totalCredit = 0;
+  let totalDebit = 0;
+  let finalBalance = 0;
+
+  function cleanAndParse(value) {
+    if (!value || value === "—" || value.toString().trim() === "") return null;
+    const cleanNum = parseFloat(value.toString().replace(/[^\d.-]/g, ""));
+    return isNaN(cleanNum) ? null : cleanNum;
+  }
+
+  transactionHistory.forEach((row) => {
+    const cr = cleanAndParse(row.credit);
+    const db = cleanAndParse(row.debit);
+    if (cr !== null) totalCredit += cr;
+    if (db !== null) totalDebit += Math.abs(db);
+  });
+
+  if (transactionHistory.length > 0) {
+    const lastRow = transactionHistory[transactionHistory.length - 1];
+    const lastBal = cleanAndParse(lastRow.balance);
+    if (lastBal !== null) {
+      finalBalance = lastBal;
+    }
+  }
+
+  // --- DRAW PREMIUM HEADER ---
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(22);
+  doc.setTextColor(34, 34, 34); // #222
+  doc.text("Spent Report Ledger", margin, 50);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(119, 119, 119); // #777
+  const timeString = new Date().toLocaleString();
+  doc.text(`Generated on: ${timeString}`, margin, 68);
+
+  doc.setDrawColor(224, 224, 224); // #e0e0e0
+  doc.setLineWidth(1);
+  doc.line(margin, 78, pageWidth - margin, 78);
+
+  // --- SUMMARY METRICS CARD ---
+  const cardY = 90;
+  const cardHeight = 50;
+  const cardWidth = pageWidth - margin * 2;
+
+  // Background Box
+  doc.setFillColor(248, 249, 250); // #f8f9fa
+  doc.roundedRect(margin, cardY, cardWidth, cardHeight, 6, 6, "F");
+
+  const colWidth = cardWidth / 3;
+
+  // Inflows (Credits)
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(102, 102, 102); // #666
+  doc.text("TOTAL CREDITS (+)", margin + 15, cardY + 18);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(40, 167, 69); // --success (#28a745)
+  doc.text(`INR ${totalCredit.toFixed(2)}`, margin + 15, cardY + 38);
+
+  // Outflows (Debits)
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(102, 102, 102);
+  doc.text("TOTAL DEBITS (-)", margin + colWidth + 15, cardY + 18);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(220, 53, 69); // --danger (#dc3545)
+  doc.text(`INR ${totalDebit.toFixed(2)}`, margin + colWidth + 15, cardY + 38);
+
+  // Net Position
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(102, 102, 102);
+  doc.text("NET BALANCE", margin + colWidth * 2 + 15, cardY + 18);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(34, 34, 34); // #222
+  doc.text(`INR ${finalBalance.toFixed(2)}`, margin + colWidth * 2 + 15, cardY + 38);
+
+  // --- TABULAR STATEMENT DATA ---
+  const tableHeaders = [["Date", "Details", "Credit (+)", "Debit (-)", "Balance"]];
+  const tableData = transactionHistory.map((row) => {
+    const cr = cleanAndParse(row.credit);
+    const db = cleanAndParse(row.debit);
+    const bal = cleanAndParse(row.balance);
+
+    return [
+      row.date,
+      row.details,
+      cr !== null ? `INR ${cr.toFixed(2)}` : "—",
+      db !== null ? `INR ${Math.abs(db).toFixed(2)}` : "—",
+      bal !== null ? `INR ${bal.toFixed(2)}` : "—"
+    ];
+  });
+
+  doc.autoTable({
+    head: tableHeaders,
+    body: tableData,
+    startY: cardY + cardHeight + 20,
+    margin: { left: margin, right: margin },
+    styles: {
+      font: "helvetica",
+      fontSize: 9,
+      cellPadding: 7,
+      valign: "middle"
+    },
+    headStyles: {
+      fillColor: [74, 144, 226], // Matches var(--primary) #4a90e2
+      textColor: 255,
+      fontStyle: "bold",
+    },
+    columnStyles: {
+      0: { cellWidth: 75, halign: "center" }, // Date
+      1: { cellWidth: "auto", halign: "left" }, // Details
+      2: { cellWidth: 85, halign: "right" }, // Credit
+      3: { cellWidth: 85, halign: "right" }, // Debit
+      4: { cellWidth: 95, halign: "right" }  // Balance
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252] // Sleek zebra shading
+    }
+  });
+
+  // Add page numbers at the very end
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(153, 153, 153);
+    doc.text(
+      `Page ${i} of ${totalPages}`,
+      pageWidth - margin - 50,
+      pageHeight - 20
+    );
+    doc.text(
+      "Confidential Financial Document",
+      margin,
+      pageHeight - 20
+    );
+  }
+
+  const fileNameDate = new Date().toISOString().split("T")[0];
+  doc.save(`spent-report-${fileNameDate}.pdf`);
+}

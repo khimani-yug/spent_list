@@ -7,6 +7,8 @@
     
     <link rel="icon" type="image/png" href="favicon.png" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -28,6 +30,7 @@
     <div class="dashboard-wrapper" id="dashboardContent">
       <div class="action-bar">
         <button class="add-entry-btn" id="openModalBtn">＋ Add Entry</button>
+        <button class="export-pdf-btn" id="exportPdfBtn">📄 Export PDF</button>
       </div>
 
       <div class="table-container">
