@@ -136,6 +136,82 @@ h2 {
   color: #222;
 }
 
+.table-header-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.table-header-flex h2 {
+  margin: 0;
+}
+
+.filter-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-group label {
+  margin: 0;
+  white-space: nowrap;
+  font-size: 14px;
+  color: #666;
+}
+
+.filter-group select {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: var(--card-bg);
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+  min-width: 160px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.filter-group select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.15);
+}
+
+.filter-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  background-color: #fff5f5;
+  border: 1px solid #ffe3e3;
+  padding: 6px 16px;
+  border-radius: 8px;
+  min-width: 120px;
+}
+
+.filter-summary-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #c92a2a;
+  font-weight: 700;
+}
+
+.filter-summary-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--danger);
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -298,4 +374,52 @@ select:focus {
 .submit-btn:disabled {
   background-color: #cccccc;
   cursor: not-allowed;
+}
+
+/* Category Badges */
+.category-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 12px;
+  margin-right: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.badge-food {
+  background-color: #fff9db;
+  color: #f08c00;
+  border: 1px solid #ffe066;
+}
+
+.badge-travel {
+  background-color: #e7f5ff;
+  color: #1c7ed6;
+  border: 1px solid #a5d8ff;
+}
+
+.badge-grocery {
+  background-color: #ebfbee;
+  color: #2b8a3e;
+  border: 1px solid #b2f2bb;
+}
+
+.badge-rent-bills {
+  background-color: #f3f0ff;
+  color: #7048e8;
+  border: 1px solid #d0bfff;
+}
+
+.badge-income {
+  background-color: #e6fcf5;
+  color: #0ca678;
+  border: 1px solid #96f2d7;
+}
+
+.badge-other {
+  background-color: #f1f3f5;
+  color: #495057;
+  border: 1px solid #dee2e6;
 }

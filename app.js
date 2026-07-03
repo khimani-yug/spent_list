@@ -6,6 +6,13 @@ let sessionAuthHash = "";
 let lastEntryDate = null;
 let transactionHistory = [];
 
+// Helper function to clean and parse numeric currency values safely
+function cleanAndParse(value) {
+  if (!value || value === "—" || value.toString().trim() === "") return null;
+  const cleanNum = parseFloat(value.toString().replace(/[^\d.-]/g, ""));
+  return isNaN(cleanNum) ? null : cleanNum;
+}
+
 // DOM UI Element Selectors
 const loginScreen = document.getElementById("loginScreen");
 const dashboardContent = document.getElementById("dashboardContent");
@@ -13,6 +20,7 @@ const modalOverlay = document.getElementById("modalOverlay");
 const openModalBtn = document.getElementById("openModalBtn");
 const closeModalBtn = document.getElementById("closeModalBtn");
 const exportPdfBtn = document.getElementById("exportPdfBtn");
+const detailFilter = document.getElementById("detailFilter");
 
 // --- Modal Open/Close Controls ---
 openModalBtn.addEventListener("click", () => modalOverlay.classList.add("active"));
@@ -78,11 +86,12 @@ async function initPortal() {
     // Build out rows inside dashboard ledger table component
     if (data.history && data.history.length > 0) {
       transactionHistory = data.history;
-      renderTable(data.history);
+      filterHistory();
     } else {
       transactionHistory = [];
       document.getElementById("ledgerBody").innerHTML =
         `<tr><td colspan="5" style="text-align: center; color: #888; padding: 20px;">No transactions logged yet.</td></tr>`;
+      updateFilteredSpendTotal([]);
     }
 
     // Apply timeline locking mechanisms onto calendar form field input bounding targets
@@ -113,6 +122,39 @@ async function initPortal() {
   }
 }
 
+// Parse category and clean details from transaction details string
+function parseCategoryAndDetails(detailsStr) {
+  if (!detailsStr) return { category: "Other", cleanDetails: "" };
+
+  // 1. Try to extract category matching `[CategoryName] ...`
+  const match = detailsStr.match(/^\[([^\]]+)\]\s*(.*)$/);
+  if (match) {
+    const category = match[1].trim();
+    const cleanDetails = match[2].trim();
+    return { category, cleanDetails };
+  }
+
+  // 2. Fall back to keyword-based categorization for legacy entries
+  const text = detailsStr.toUpperCase();
+  if (text.includes("LUNCH") || text.includes("DINNER") || text.includes("JUICE") || text.includes("CHAI") || text.includes("PANI PURI") || text.includes("FOOD")) {
+    return { category: "Food", cleanDetails: detailsStr };
+  }
+  if (text.includes("AUTO") || text.includes("TRAVEL") || text.includes("CAB") || text.includes("TRAIN") || text.includes("BUS")) {
+    return { category: "Travel", cleanDetails: detailsStr };
+  }
+  if (text.includes("GROCERY") || text.includes("SUPERMARKET") || text.includes("D-MART") || text.includes("PROVISIONS")) {
+    return { category: "Grocery", cleanDetails: detailsStr };
+  }
+  if (text.includes("RENT") || text.includes("BILL") || text.includes("ELECTRICITY") || text.includes("RECHARGE")) {
+    return { category: "Rent/Bills", cleanDetails: detailsStr };
+  }
+  if (text.includes("RECEIVE") || text.includes("FATHER") || text.includes("CREDIT") || text.includes("SALARY")) {
+    return { category: "Income", cleanDetails: detailsStr };
+  }
+
+  return { category: "Other", cleanDetails: detailsStr };
+}
+
 // Process transaction data mapping cleanly onto DOM elements
 function renderTable(history) {
   const tbody = document.getElementById("ledgerBody");
@@ -120,12 +162,6 @@ function renderTable(history) {
 
   history.forEach((row) => {
     const tr = document.createElement("tr");
-
-    function cleanAndParse(value) {
-      if (!value || value === "—" || value.toString().trim() === "") return null;
-      const cleanNum = parseFloat(value.toString().replace(/[^\d.-]/g, ""));
-      return isNaN(cleanNum) ? null : cleanNum;
-    }
 
     const creditNum = cleanAndParse(row.credit);
     const debitNum = cleanAndParse(row.debit);
@@ -135,9 +171,21 @@ function renderTable(history) {
     const debitDisplay = debitNum !== null ? `<span class="debit-text">₹${Math.abs(debitNum).toFixed(2)}</span>` : "—";
     const balanceDisplay = balanceNum !== null ? `<span class="balance-text">₹${balanceNum.toFixed(2)}</span>` : "—";
 
+    const { category, cleanDetails } = parseCategoryAndDetails(row.details);
+    
+    // Choose appropriate badge class
+    let badgeClass = "badge-other";
+    if (category === "Food") badgeClass = "badge-food";
+    else if (category === "Travel") badgeClass = "badge-travel";
+    else if (category === "Grocery") badgeClass = "badge-grocery";
+    else if (category === "Rent/Bills") badgeClass = "badge-rent-bills";
+    else if (category === "Income") badgeClass = "badge-income";
+
+    const badgeHtml = `<span class="category-badge ${badgeClass}">${category}</span>`;
+
     tr.innerHTML = `
           <td><b>${row.date}</b></td>
-          <td>${row.details}</td>
+          <td>${badgeHtml}${cleanDetails}</td>
           <td>${creditDisplay}</td>
           <td>${debitDisplay}</td>
           <td>${balanceDisplay}</td>
@@ -173,10 +221,14 @@ document.getElementById("transactionForm").addEventListener("submit", async func
   submitBtn.disabled = true;
   submitBtn.innerText = "Pushing data...";
 
+  const categoryVal = document.getElementById("category").value;
+  const originalTitle = document.getElementById("title").value;
+  const combinedTitle = `[${categoryVal}] ${originalTitle}`;
+
   const payload = {
     date: document.getElementById("date").value,
     type: document.getElementById("type").value,
-    title: document.getElementById("title").value,
+    title: combinedTitle,
     amount: parseFloat(document.getElementById("amount").value),
     authHash: sessionAuthHash // 👈 Reuses the token saved during system startup authorization!
   };
@@ -250,12 +302,6 @@ async function exportToPDF() {
     let totalCredit = 0;
     let totalDebit = 0;
     let finalBalance = 0;
-
-    function cleanAndParse(value) {
-      if (!value || value === "—" || value.toString().trim() === "") return null;
-      const cleanNum = parseFloat(value.toString().replace(/[^\d.-]/g, ""));
-      return isNaN(cleanNum) ? null : cleanNum;
-    }
 
     transactionHistory.forEach((row) => {
       const cr = cleanAndParse(row.credit);
@@ -402,4 +448,34 @@ async function exportToPDF() {
     exportBtn.disabled = false;
     exportBtn.innerText = originalText;
   }
+}
+
+// --- 5. TRANSACTION LEDGER FILTERING AND SUMMARIZATION ---
+detailFilter.addEventListener("change", filterHistory);
+
+function filterHistory() {
+  const filterValue = detailFilter.value;
+  let filtered = transactionHistory;
+
+  if (filterValue !== "ALL") {
+    filtered = transactionHistory.filter((row) => {
+      const { category } = parseCategoryAndDetails(row.details);
+      return category.toUpperCase() === filterValue.toUpperCase();
+    });
+  }
+
+  renderTable(filtered);
+  updateFilteredSpendTotal(filtered);
+}
+
+function updateFilteredSpendTotal(filtered) {
+  let totalDebit = 0;
+  filtered.forEach((row) => {
+    const db = cleanAndParse(row.debit);
+    if (db !== null) {
+      totalDebit += Math.abs(db);
+    }
+  });
+
+  document.getElementById("filteredSpendsVal").innerText = `₹${totalDebit.toFixed(2)}`;
 }
